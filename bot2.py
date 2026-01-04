@@ -1,3 +1,6 @@
+import os
+from flask import Flask
+from threading import Thread
 import requests
 import time
 import json
@@ -190,5 +193,6 @@ while True:
             send_message(user_id, "✅ Вы подписались! Добро пожаловать в IT Studio | Боты | Дизайн | Монтаж", main_keyboard)
             pending_users.remove(user_id)
             user_states[user_id] = None
+
 
     time.sleep(0.1)
