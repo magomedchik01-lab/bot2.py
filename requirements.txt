@@ -4,3 +4,5 @@ yt-dlp
 aiohttp
 asyncpg
 matplotlib
+
+# обновление 1
