@@ -2,4 +2,5 @@ aiogram
 flask
 yt-dlp
 aiohttp
+asyncpg
 matplotlib

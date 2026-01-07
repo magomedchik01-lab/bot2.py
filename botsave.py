@@ -17,6 +17,7 @@ from aiogram.exceptions import TelegramEntityTooLarge, TelegramConflictError
 import yt_dlp
 from flask import Flask
 from threading import Thread
+from stats import add_user, add_download, connect_db, send_stats
 
 app = Flask('')
 
@@ -1132,6 +1133,7 @@ async def start_download_process(callback: types.CallbackQuery, state: FSMContex
             
             # Формируем описание (Caption)
             caption = f"🎥 <b>{title}</b>\n🤖 Файл был скачайн с помощью бота @it_studio_videoBOT"
+            await add_download(int(user_id), platform)
             
             # --- ДОБАВЛЕНИЕ РЕКЛАМЫ СПОНСОРА ---
             if ad_settings.get("expires_at") and datetime.now().timestamp() < ad_settings["expires_at"]:
@@ -1277,8 +1279,30 @@ async def main():
         print("Бот остановлен пользователем")
 
 if __name__ == "__main__":
-    try:
-        keep_alive()  # <--- Добавь это здесь
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Бот выключен пользователем")
+    import asyncpg
+import os
+import asyncio
+
+async def init_db():
+    pool = await asyncpg.create_pool(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME"),
+        port=int(os.getenv("DB_PORT", 5432))
+    )
+    await connect_db(pool)
+    await pool.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS downloads (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            platform TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    return pool
+
+asyncio.run(init_db())
