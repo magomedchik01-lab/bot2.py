@@ -2,7 +2,7 @@ import asyncio
 import os
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 from collections import Counter
 from aiogram import Bot, Dispatcher, types, F
@@ -36,15 +36,6 @@ try:
     from openai import AsyncOpenAI
 except ImportError:
     AsyncOpenAI = None
-
-# Попытка импорта matplotlib для графиков
-try:
-    import matplotlib
-    matplotlib.use('Agg') # Исправление для работы на сервере без экрана
-    import matplotlib.pyplot as plt
-except Exception as e:
-    print(f"⚠️ Ошибка импорта matplotlib: {e}")
-    plt = None
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.getenv('BOT_TOKEN')  # Вставь сюда токен
@@ -860,49 +851,46 @@ async def cmd_stats(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
 
-    if not plt:
-        await message.answer("❌ Ошибка: библиотека matplotlib не загружена. Смотри ошибку в консоли.")
-        return
-
     # Сбор данных
     total_users = len(users_db)
     premium_users = sum(1 for u in users_db.values() if u.get("premium"))
     
+    # Активность сегодня
+    today = datetime.now().strftime("%Y-%m-%d")
+    active_today = sum(1 for u in users_db.values() if u.get("date") == today)
+    new_today = sum(1 for u in users_db.values() if u.get("joined_at") == today)
+    
     # Данные для графика (по дате регистрации)
     dates = [u.get("joined_at", "Unknown") for u in users_db.values()]
-    # Фильтруем некорректные даты
-    dates = [d for d in dates if d != "Unknown"]
+    date_counts = Counter(d for d in dates if d != "Unknown")
     
-    if not dates:
-        await message.answer(f"📊 <b>Статистика:</b>\n👥 Всего: {total_users}\n💎 Premium: {premium_users}\n(Мало данных для графика)")
-        return
+    # Берем последние 7 дней
+    sorted_dates = sorted(date_counts.keys())[-7:]
+    
+    # Строим текстовый график
+    graph_text = ""
+    if sorted_dates:
+        max_val = max(date_counts[d] for d in sorted_dates)
+        for d in sorted_dates:
+            count = date_counts[d]
+            # Длина полоски (макс 10 символов)
+            bar_len = int((count / max_val) * 10) if max_val > 0 else 0
+            bar = "█" * bar_len
+            graph_text += f"<code>{d[5:]}</code> {bar} <b>{count}</b>\n"
+    else:
+        graph_text = "(Нет данных за последние дни)"
 
-    date_counts = Counter(dates)
-    sorted_dates = sorted(date_counts.keys())
-    counts = [date_counts[d] for d in sorted_dates]
-
-    # Построение графика
-    try:
-        plt.figure(figsize=(10, 6))
-        plt.plot(sorted_dates, counts, marker='o', linestyle='-', color='b')
-        plt.title("Рост аудитории (новые пользователи)")
-        plt.xlabel("Дата")
-        plt.ylabel("Кол-во")
-        plt.grid(True)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        # Сохранение в буфер
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close()
-
-        # Отправка
-        photo = types.BufferedInputFile(buf.read(), filename="stats.png")
-        await message.answer_photo(photo, caption=f"📊 <b>Статистика бота:</b>\n\n👥 Всего пользователей: {total_users}\n💎 Premium пользователей: {premium_users}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка построения графика: {e}")
+    text = (
+        f"📊 <b>Статистика бота</b>\n\n"
+        f"👥 <b>Всего пользователей:</b> {total_users}\n"
+        f"💎 <b>Premium:</b> {premium_users}\n"
+        f"🔥 <b>Активных сегодня:</b> {active_today}\n"
+        f"🆕 <b>Новых сегодня:</b> {new_today}\n\n"
+        f"📈 <b>Динамика новых юзеров:</b>\n"
+        f"{graph_text}"
+    )
+    
+    await message.answer(text)
 
 # --- АДМИН ПАНЕЛЬ (МЕНЮ) ---
 @dp.message(F.text == "👑 Админ-панель")
@@ -1264,6 +1252,9 @@ async def main():
         
         # Запускаем фоновую задачу проверки спонсора
         asyncio.create_task(check_sponsor_expiration())
+        
+        # Запускаем авто-отправку статистики
+        asyncio.create_task(scheduled_stats_task())
         
         await dp.start_polling(bot)
     except TelegramConflictError:
