@@ -13,7 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile
 from aiogram.types import FSInputFile, LabeledPrice, PreCheckoutQuery
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.exceptions import TelegramEntityTooLarge
+from aiogram.exceptions import TelegramEntityTooLarge, TelegramConflictError
 import yt_dlp
 from flask import Flask
 from threading import Thread
@@ -42,7 +42,8 @@ try:
     import matplotlib
     matplotlib.use('Agg') # Исправление для работы на сервере без экрана
     import matplotlib.pyplot as plt
-except ImportError:
+except Exception as e:
+    print(f"⚠️ Ошибка импорта matplotlib: {e}")
     plt = None
 
 # --- НАСТРОЙКИ ---
@@ -860,7 +861,7 @@ async def cmd_stats(message: types.Message):
         return
 
     if not plt:
-        await message.answer("❌ Для работы статистики нужно установить библиотеку: <code>pip install matplotlib</code>")
+        await message.answer("❌ Ошибка: библиотека matplotlib не загружена. Смотри ошибку в консоли.")
         return
 
     # Сбор данных
@@ -1265,12 +1266,18 @@ async def main():
         asyncio.create_task(check_sponsor_expiration())
         
         await dp.start_polling(bot)
+    except TelegramConflictError:
+        print("❌ КРИТИЧЕСКАЯ ОШИБКА: Бот уже запущен в другом месте (на ПК или вторая копия на сервере)!")
+        print("🛑 Остановите другие копии бота, чтобы этот экземпляр мог работать.")
     except Exception as e:
         print(f"ОШИБКА ПРИ ЗАПУСКЕ: {e}")
         # --- СИСТЕМА 24/7 (АВТО-ПЕРЕЗАПУСК) ---
         while True:
             try:
                 await dp.start_polling(bot)
+            except TelegramConflictError:
+                print("❌ КОНФЛИКТ СЕССИЙ: Бот запущен где-то еще. Повтор через 10 сек...")
+                await asyncio.sleep(10)
             except Exception as e:
                 print(f"⚠️ КРИТИЧЕСКАЯ ОШИБКА: {e}")
                 print("🔄 Перезапуск бота через 5 секунд...")
