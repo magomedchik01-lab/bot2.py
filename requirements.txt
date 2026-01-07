@@ -1,8 +1,0 @@
-aiogram
-flask
-yt-dlp
-aiohttp
-asyncpg
-matplotlib
-
-# rebuild dependencies
